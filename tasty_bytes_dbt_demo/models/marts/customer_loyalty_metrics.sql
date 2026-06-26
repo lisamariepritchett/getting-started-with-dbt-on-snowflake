@@ -7,7 +7,7 @@ SELECT
     cl.phone_number,
     cl.e_mail,
     SUM(oh.order_total) AS total_sales,
-    ARRAY_AGG(DISTINCT oh.location_id) AS visited_location_ids_array
+    -- ARRAY_AGG(DISTINCT oh.location_id) AS visited_location_ids_array -- commenting as a test
 FROM {{ ref('raw_customer_customer_loyalty') }} cl
 JOIN {{ ref('raw_pos_order_header') }} oh
 ON cl.customer_id = oh.customer_id
