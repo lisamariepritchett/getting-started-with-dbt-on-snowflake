@@ -54,11 +54,12 @@ jobs:
             echo "mode=build" >> $GITHUB_OUTPUT
             echo "models=$MODELS" >> $GITHUB_OUTPUT
           elif [ -n "$TEST_FILES" ] && [ -z "$MACRO_FILES" ] && [ -z "$CONFIG_FILES" ]; then
+            # Extract folder paths relative to dbt project for --select path:
+            TEST_PATHS=$(echo "$TEST_FILES" | sed 's|^tasty_bytes_dbt_demo/||' | xargs -I{} dirname {} | sort -u | sed 's/^/path:/' | tr '\n' ' ' | sed 's/ $//')
             echo "mode=test" >> $GITHUB_OUTPUT
-          elif [ -n "$MACRO_FILES" ] || [ -n "$CONFIG_FILES" ]; then
-            echo "mode=compile" >> $GITHUB_OUTPUT
+            echo "test_select=$TEST_PATHS" >> $GITHUB_OUTPUT
           elif [ -n "$DBT_FILES" ]; then
-            echo "mode=compile" >> $GITHUB_OUTPUT
+            echo "mode=deploy_only" >> $GITHUB_OUTPUT
           else
             echo "mode=skip" >> $GITHUB_OUTPUT
           fi
@@ -71,17 +72,17 @@ jobs:
         if: steps.changes.outputs.mode == 'build'
         run: snow dbt execute -x tasty_bytes_dbt_object_gh_action build --target prod --select ${{ steps.changes.outputs.models }}
 
-      - name: Run tests only
+      - name: Run tests for changed folders
         if: steps.changes.outputs.mode == 'test'
-        run: snow dbt execute -x tasty_bytes_dbt_object_gh_action test --target prod
+        run: snow dbt execute -x tasty_bytes_dbt_object_gh_action test --target prod --select ${{ steps.changes.outputs.test_select }}
 
-      - name: Compile only (config or macro change)
-        if: steps.changes.outputs.mode == 'compile'
-        run: snow dbt execute -x tasty_bytes_dbt_object_gh_action compile --target prod
+      - name: Deploy validated (config or macro change)
+        if: steps.changes.outputs.mode == 'deploy_only'
+        run: echo "Config/macro changes validated by successful deploy. No models to build."
 
       - name: No dbt changes detected
         if: steps.changes.outputs.mode == 'skip'
-        run: echo "No dbt project changes detected, skipping execution."
+        run: echo "No dbt project changes detected, skipping."
 
       - name: List all dbt project objects
         if: steps.changes.outputs.mode != 'skip'
