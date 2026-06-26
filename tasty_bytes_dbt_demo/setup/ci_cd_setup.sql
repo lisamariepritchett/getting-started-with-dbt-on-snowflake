@@ -111,3 +111,7 @@ ALTER USER GitHub_Actions_Service_User
 -- Add the new rule:
 -- ALTER NETWORK POLICY <name>
 --   ADD ALLOWED_NETWORK_RULE_LIST = ('SNOWFLAKE.NETWORK_SECURITY.GITHUBACTIONS_GLOBAL');
+
+
+
+-- hmm we ncan do something like this in a setup file to record the steps required to set up and to add new users etc
