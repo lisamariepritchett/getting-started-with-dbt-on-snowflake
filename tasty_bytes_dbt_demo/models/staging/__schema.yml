@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: raw_pos_truck
+    description: 'Staging model for food truck data'
+    columns:
+      - name: TRUCK_ID
+        description: 'Primary key for trucks'
+        data_tests:
+          - not_null
