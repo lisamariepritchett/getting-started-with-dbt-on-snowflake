@@ -1,8 +1,8 @@
 version: 2
 sources:
-- name: tb_101
+- name: tasty_bytes_raw
   description: 'Point of Sale source data'
-  database: tasty_bytes_dbt_db
+  database: "{% if target.name == 'prod' %}tasty_bytes_raw_el_db{% else %}prod_tasty_bytes_raw_el_db{% endif %}"
   schema: RAW
   tables:
   - name: COUNTRY
@@ -12,9 +12,6 @@ sources:
       description: 'Primary key for countries'
       data_tests:
         - not_null
-        # - dbt_utils.accepted_range:  # Numeric range validation
-        #     min_value: 1
-        #     max_value: 1000
     - name: COUNTRY
       description: 'Country name'
       data_tests:
@@ -136,7 +133,7 @@ sources:
       data_tests:
         - not_null
         - relationships:
-            to: source('tb_101', 'ORDER_HEADER')
+            to: source('tasty_bytes_raw', 'ORDER_HEADER')
             field: ORDER_ID
     - name: MENU_ITEM_ID
       description: 'Foreign key to menu'
@@ -176,14 +173,14 @@ sources:
       data_tests:
         - not_null
         - relationships:
-            to: source('tb_101', 'TRUCK')
+            to: source('tasty_bytes_raw', 'TRUCK')
             field: TRUCK_ID
     - name: LOCATION_ID
       description: 'Foreign key to location'
       data_tests:
         - not_null
         - relationships:
-            to: source('tb_101', 'LOCATION')
+            to: source('tasty_bytes_raw', 'LOCATION')
             field: LOCATION_ID
     - name: CUSTOMER_ID
       description: 'Customer identifier'
@@ -269,7 +266,7 @@ sources:
       description: 'Foreign key to franchise'
       data_tests:
         - relationships:
-            to: source('tb_101', 'FRANCHISE')
+            to: source('tasty_bytes_raw', 'FRANCHISE')
             field: FRANCHISE_ID
     - name: TRUCK_OPENING_DATE
       description: 'Date truck began operations'

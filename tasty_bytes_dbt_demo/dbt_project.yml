@@ -21,5 +21,17 @@ models:
   tasty_bytes:
     staging:
       +materialized: view
+      pos_system:
+        +schema: pos_system
+        +database: tasty_bytes_stage_db
+      crm:
+        +schema: crm
+        +database: tasty_bytes_stage_db
     marts:
       +materialized: table
+      marketing:
+        +schema: marketing
+        +database: tasty_bytes_edw_db
+      finance:
+        +schema: finance
+        +database: tasty_bytes_edw_db
