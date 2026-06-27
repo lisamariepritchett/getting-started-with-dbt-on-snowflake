@@ -48,10 +48,10 @@ Developer environments keep everything flat in a single schema.
 
 **Folder → Prod routing:**
 ```
-models/staging/marketing/  → stage_db.marketing
-models/staging/finance/    → stage_db.finance
-models/marts/marketing/    → edw_db.marketing
-models/marts/finance/      → edw_db.finance
+models/staging/pos_system/  → tasty_bytes_stage_db.pos_system
+models/staging/crm/         → tasty_bytes_stage_db.crm
+models/marts/marketing/     → tasty_bytes_edw_db.marketing
+models/marts/finance/       → tasty_bytes_edw_db.finance
 ```
 
 **Dev routing (dev_lisa, dev_bob, etc.):**
@@ -63,18 +63,19 @@ All models → `tasty_bytes_dbt_db.dev_lisa` regardless of folder.
 - `dbt_project.yml` — folder-level `+schema` and `+database` configs
 
 **Current model locations:**
-- `models/marts/finance/orders.sql` (moved from marts root)
-- `models/marts/marketing/customer_loyalty_metrics.sql` (moved from marts root)
-- `models/staging/marketing/` and `models/staging/finance/` — empty, ready for models
+- `models/staging/pos_system/` — 7 POS models (country, franchise, location, menu, order_detail, order_header, truck)
+- `models/staging/crm/` — 1 CRM model (customer_loyalty)
+- `models/marts/finance/orders.sql`
+- `models/marts/marketing/customer_loyalty_metrics.sql`
 
 **To test prod routing, need to create:**
 ```sql
-CREATE DATABASE IF NOT EXISTS stage_db;
-CREATE SCHEMA IF NOT EXISTS stage_db.marketing;
-CREATE SCHEMA IF NOT EXISTS stage_db.finance;
-CREATE DATABASE IF NOT EXISTS edw_db;
-CREATE SCHEMA IF NOT EXISTS edw_db.marketing;
-CREATE SCHEMA IF NOT EXISTS edw_db.finance;
+CREATE DATABASE IF NOT EXISTS tasty_bytes_stage_db;
+CREATE SCHEMA IF NOT EXISTS tasty_bytes_stage_db.pos_system;
+CREATE SCHEMA IF NOT EXISTS tasty_bytes_stage_db.crm;
+CREATE DATABASE IF NOT EXISTS tasty_bytes_edw_db;
+CREATE SCHEMA IF NOT EXISTS tasty_bytes_edw_db.marketing;
+CREATE SCHEMA IF NOT EXISTS tasty_bytes_edw_db.finance;
 ```
 
 ## Key Decisions Made
