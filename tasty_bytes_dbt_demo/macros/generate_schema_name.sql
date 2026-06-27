@@ -2,15 +2,15 @@
 
     {%- set default_schema = target.schema -%}
 
-    {%- if target.name in ['dev', 'prod'] -%}
-        {# In CI/CD targets, use the custom schema (department folder) if set #}
+    {%- if target.name == 'prod' -%}
+        {# In prod, use the custom schema (department folder) if set #}
         {%- if custom_schema_name is none -%}
             {{ default_schema }}
         {%- else -%}
             {{ custom_schema_name | trim }}
         {%- endif -%}
     {%- else -%}
-        {# In developer targets (dev_lisa, dev_bob), flatten everything into one schema #}
+        {# In all other targets (dev, dev_lisa, etc.), flatten into one schema #}
         {{ default_schema }}
     {%- endif -%}
 
