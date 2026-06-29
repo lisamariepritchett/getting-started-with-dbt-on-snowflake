@@ -17,8 +17,8 @@ jobs:
     env:
       SNOWFLAKE_CLI_FEATURES_ENABLE_DBT: true
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_DATABASE: ${{ vars.SNOWFLAKE_DATABASE }}
-      SNOWFLAKE_SCHEMA: ${{ vars.SNOWFLAKE_SCHEMA }}
+      SNOWFLAKE_DATABASE: TASTY_BYTES_DBT_DB
+      SNOWFLAKE_SCHEMA: DEV
 
     steps:
       - name: Check out repository code
@@ -34,7 +34,8 @@ jobs:
       - name: Check Snowflake CLI Version
         run: snow --version
 
-      - run: snow connection test -x
+      - name: Test Snowflake connection
+        run: snow connection test -x
 
       - name: Determine what changed
         id: changes
