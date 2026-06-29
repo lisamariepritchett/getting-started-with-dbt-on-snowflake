@@ -58,9 +58,9 @@ models/marts/finance/       → tasty_bytes_edw_db.finance
 All models → `tasty_bytes_dbt_db.dev_lisa` regardless of folder.
 
 **Controlled by:**
-- `macros/generate_schema_name.sql` — routes schema; uses custom schema in prod, target schema in dev
-- `macros/generate_database_name.sql` — routes database; uses custom db in prod, default db in dev
-- `dbt_project.yml` — folder-level `+schema` and `+database` configs
+- `macros/generate_schema_name.sql` — derives schema from folder name automatically (no config needed)
+- `macros/generate_database_name.sql` — derives database from layer (`staging` → stage_db, `marts` → edw_db)
+- `dbt_project.yml` — only sets materialization per layer (view for staging, table for marts)
 
 **Current model locations:**
 - `models/staging/pos_system/` — 7 POS models (country, franchise, location, menu, order_detail, order_header, truck)
@@ -119,6 +119,8 @@ which either fails (schema doesn't exist) or is immediately visible as misconfig
 9. Only `target.name == 'prod'` triggers multi-db routing (not `dev`) — caught a bug where
    `['dev', 'prod']` caused CI dev builds to route to prod databases
 10. Custom macros don't work in source YAML — must use inline Jinja with `target.name`
+11. Workflow env vars hardcoded per workflow (not `${{ vars.X }}`) — both share the same
+    GitHub environment (`prod`) for OIDC, so can't use separate env variables for CI vs CD
 
 ## CLI Flags Discovered (via trial and error)
 - `--install-local-deps` (not --install-packages)
@@ -132,123 +134,59 @@ which either fails (schema doesn't exist) or is immediately visible as misconfig
 - [x] Drop `tasty_bytes_dbt_db.prod` (prod routes to stage_db/edw_db now) ✓
 - [x] Update prod target: database → `tasty_bytes_stage_db`, schema → `unrouted` ✓
 - [x] Move `sales_metrics_by_location.py` to `models/marts/finance/` ✓
-- [ ] **RBAC roles** (see plan below)
-- [ ] **Manual prod job execution** (see plan below)
+- [x] Hardcode workflow env vars: CI → `TASTY_BYTES_DBT_DB.DEV`, CD → `TASTY_BYTES_STAGE_DB.PUBLIC` ✓
+- [x] **RBAC roles** created: DBT_DEVELOPER + DBT_CI (simplified 2-role model) ✓
+- [x] Updated profiles.yml to use new roles per target ✓
+- [x] Granted DBT_EXT_ACCESS integration to DBT_DEVELOPER (needed for dbt deps) ✓
+- [x] Created `setup/rbac_and_routing_setup.sql` with all grant statements ✓
+- [x] Created `TEAM_GUIDE.md` for team reference ✓
+- [x] **Manual prod job execution** via `workflow_dispatch` on CD workflow ✓
+- [x] Auto-routing macros: schema derived from folder, database from layer ✓
+- [x] Simplified dbt_project.yml (removed per-folder +schema/+database) ✓
 - [ ] Test prod routing after merge (models should land in stage_db/edw_db)
 - [ ] Test all workflow conditions (model change, test-only, macro, skip)
+- [ ] Create test user with only DBT_DEVELOPER to verify prod is truly blocked
 - [ ] Multi-account setup (dev/test account + prod account) when available
 - [ ] Add proper dbt tests back to __schema.yml (currently minimal for testing)
 - [ ] Consider blue/green deployment or clone-before-deploy for prod safety
 - [ ] Branch protection rules on main (require CI to pass before merge)
-- [ ] Test `--select` with `snow dbt execute` to confirm selectors pass through correctly
 - [ ] Evaluate for larger project: many models, multiple developers, test execution time
 - [ ] Rename warehouse `TASTY_BYTES_DBT_DB` → `DBT_WH` (or similar)
 
-## RBAC Plan
+## RBAC (Implemented)
 
-### Design Principles
-- Developers cannot accidentally write to prod databases
-- CI/CD permissions are separated: CI can only write dev, CD can write prod
-- Manual prod runs use a deployed project object pinned to main branch (not workspace code)
-- Maps cleanly to future multi-account setup (dev account + prod account)
-
-### Roles (3-role model)
+### Roles (2-role model)
 
 **`DBT_DEVELOPER`** — assigned to all human users as default role
 - USAGE on warehouse
 - READ on `prod_tasty_bytes_raw_el_db` (dev raw sources)
 - ALL on `tasty_bytes_dbt_db` dev schemas (dev, dev_lisa, dev_bob, etc.)
-- EXECUTE on prod dbt project object (runs main-branch code in prod, see below)
 - NO write access to `tasty_bytes_stage_db` or `tasty_bytes_edw_db`
 
-**`DBT_CI`** — assigned to `github_actions_service_user`, used by CI workflow
+**`DBT_CI`** — assigned to `github_actions_service_user`
 - USAGE on warehouse
-- READ on `prod_tasty_bytes_raw_el_db` (dev raw sources)
-- ALL on `tasty_bytes_dbt_db.dev` schema
-- NO write access to prod databases
-- Used with `--role DBT_CI` in `incoming_pr.yml`
-
-**`DBT_DEPLOYER`** — assigned to `github_actions_service_user`, used by CD workflow
-- USAGE on warehouse
-- READ on `tasty_bytes_raw_el_db` (prod raw sources)
-- ALL on `tasty_bytes_stage_db` (all schemas)
-- ALL on `tasty_bytes_edw_db` (all schemas)
+- READ on both raw source databases
+- ALL on `tasty_bytes_dbt_db.dev` schema (CI PR checks)
+- ALL on `tasty_bytes_stage_db` and `tasty_bytes_edw_db` (prod deploys)
 - Can CREATE/ALTER/EXECUTE dbt project objects
-- Used with `--role DBT_DEPLOYER` in `pr_merged.yml`
+- Handles CI, CD, and manual runs (all via GitHub Actions)
 
 ### Role Hierarchy
 ```
 ACCOUNTADMIN
   └── SYSADMIN
-        ├── DBT_DEPLOYER
         ├── DBT_CI
         └── DBT_DEVELOPER
 ```
 
-### Manual Prod Job Execution (for developers)
+### Manual Prod Runs (Implemented)
 
-**Problem:** Developers sometimes need to manually rebuild specific models in prod
-(e.g. backfill, one-off fix). In dbt Cloud this is "trigger a job." We need an equivalent
-that guarantees code comes from main branch, not their workspace.
+Developers trigger prod builds via GitHub Actions `workflow_dispatch`:
+1. Go to GitHub → Actions → "CD Prod Run" → "Run workflow"
+2. Select main branch (enforced), choose command, enter selector
+3. Runs against the already-deployed project object with `--target prod`
 
-**Solution A: Deployed dbt project object (Snowflake-native)**
-
-A deployed `DBT PROJECT` object pinned to main branch via the CD workflow.
-Developers with `DBT_DEVELOPER` can EXECUTE it with selectors:
-
-```sql
--- Rebuild a specific model in prod
-EXECUTE DBT PROJECT tasty_bytes_dbt_db.integrations.tasty_bytes_prod_runner
-  ARGS = 'run --select orders --target prod';
-
--- Rebuild a tag
-EXECUTE DBT PROJECT tasty_bytes_dbt_db.integrations.tasty_bytes_prod_runner
-  ARGS = 'run --select tag:daily --target prod';
-
--- Run tests only
-EXECUTE DBT PROJECT tasty_bytes_dbt_db.integrations.tasty_bytes_prod_runner
-  ARGS = 'test --select +orders --target prod';
-```
-
-The project object is re-deployed by CD on every merge to main, so it always
-reflects the latest main branch code. Developers can run it but cannot change
-the underlying code — only ACCOUNTADMIN/DBT_DEPLOYER can deploy/alter it.
-
-Note: DBT_DEVELOPER needs EXECUTE privilege on the project object AND write
-access to prod databases for the models to actually materialize. This means
-either:
-  (a) Grant DBT_DEVELOPER limited write to prod (defeats purpose), OR
-  (b) Create a `DBT_PROD_RUNNER` role with prod write + project execute,
-      and developers must explicitly USE ROLE DBT_PROD_RUNNER (intentional act), OR
-  (c) Use a stored procedure that runs as owner (DBT_DEPLOYER) so the
-      developer doesn't need direct prod write access.
-
-Decision: TBD — option (b) or (c) preferred.
-
-**Solution B: GitHub Actions `workflow_dispatch` (companion)**
-
-Add a manual trigger to the CD workflow so developers can trigger prod builds
-from the GitHub UI, always running against main:
-
-```yaml
-on:
-  workflow_dispatch:
-    inputs:
-      dbt_command:
-        description: 'dbt command (run, build, test)'
-        default: 'run'
-        type: choice
-        options: [run, build, test]
-      dbt_select:
-        description: 'dbt --select argument'
-        required: true
-      dbt_exclude:
-        description: 'dbt --exclude argument (optional)'
-        required: false
-```
-
-Pros: Full audit trail in GitHub, branch is guaranteed main, no extra Snowflake
-roles needed. Cons: Requires GitHub access, slower feedback loop than SQL.
+Code always comes from main. Branch guard rejects non-main dispatch.
 
 ## Known Limitations
 - `state:modified` not available in Snowflake dbt projects
@@ -256,6 +194,9 @@ roles needed. Cons: Requires GitHub access, slower feedback loop than SQL.
 - Git diff approach misses downstream impact of macro changes (falls back to deploy-only)
 - Can't gitignore profiles.yml (needed for deploy to Snowflake)
 - Toolbar Test button runs all tests, not file-scoped
+- RBAC guardrails only block users who don't have ACCOUNTADMIN. Admins inherit all roles
+  through the hierarchy. True isolation requires separate accounts.
+- dbt selectors are case-sensitive (use lowercase model names)
 
 ## How to Resume
 Tell CoCo: "Read the NOTES.md file for context on this project" at the start of a new chat.
