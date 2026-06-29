@@ -1,4 +1,4 @@
-name: PR Accepted Deployment
+name: CD Prod Run
 run-name: "${{ github.event_name == 'workflow_dispatch' && format('Manual prod run by {0}: {1} --select {2}', github.actor, github.event.inputs.dbt_command, github.event.inputs.dbt_select) || format('PR from {0} accepted', github.actor) }}"
 on:
   push:
@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   run-snowflake-dbt-job:
-    name: "Run on Accepted PR"
+    name: "CD Prod Run"
     runs-on: ubuntu-latest
     environment: prod # Must match the OIDC subject's environment
     env:
