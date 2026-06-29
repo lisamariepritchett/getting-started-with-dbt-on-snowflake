@@ -1,8 +1,26 @@
 name: PR Accepted Deployment
-run-name: PR from ${{ github.actor }} accepted - triggered a ${{ github.event_name }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Manual prod run by {0}: {1} --select {2}', github.actor, github.event.inputs.dbt_command, github.event.inputs.dbt_select) || format('PR from {0} accepted - triggered a {1}', github.actor, github.event_name) }}
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      dbt_command:
+        description: 'dbt command to run'
+        required: true
+        default: 'run'
+        type: choice
+        options:
+          - run
+          - build
+          - test
+      dbt_select:
+        description: 'dbt --select argument (e.g. orders, tag:daily, +my_model)'
+        required: true
+      dbt_exclude:
+        description: 'dbt --exclude argument (optional)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -39,7 +57,16 @@ jobs:
       - name: Determine what changed
         id: changes
         run: |
-          # Compare this push against its parent commit
+          # Manual dispatch: use user-provided selector
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=manual" >> $GITHUB_OUTPUT
+            echo "dbt_command=${{ github.event.inputs.dbt_command }}" >> $GITHUB_OUTPUT
+            echo "dbt_select=${{ github.event.inputs.dbt_select }}" >> $GITHUB_OUTPUT
+            echo "dbt_exclude=${{ github.event.inputs.dbt_exclude }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Push trigger: detect what changed via git diff
           CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD)
 
           # Categorize changes
@@ -66,7 +93,7 @@ jobs:
           fi
 
       - name: Deploy dbt project object
-        if: steps.changes.outputs.mode != 'skip'
+        if: steps.changes.outputs.mode != 'skip' && steps.changes.outputs.mode != 'manual'
         run: snow dbt deploy tasty_bytes_dbt_object_gh_action --source ./tasty_bytes_dbt_demo --default-target prod --dbt-version 1.10.15 --force -x --install-local-deps --external-access-integration dbt_ext_access
 
       - name: Build changed models and downstream
@@ -76,6 +103,15 @@ jobs:
       - name: Run tests for changed folders
         if: steps.changes.outputs.mode == 'test'
         run: snow dbt execute -x tasty_bytes_dbt_object_gh_action test --target prod --select ${{ steps.changes.outputs.test_select }}
+
+      - name: Manual prod run
+        if: steps.changes.outputs.mode == 'manual'
+        run: |
+          EXCLUDE_ARG=""
+          if [ -n "${{ steps.changes.outputs.dbt_exclude }}" ]; then
+            EXCLUDE_ARG="--exclude ${{ steps.changes.outputs.dbt_exclude }}"
+          fi
+          snow dbt execute -x tasty_bytes_dbt_object_gh_action ${{ steps.changes.outputs.dbt_command }} --target prod --select ${{ steps.changes.outputs.dbt_select }} $EXCLUDE_ARG
 
       - name: Deploy validated (config or macro change)
         if: steps.changes.outputs.mode == 'deploy_only'
