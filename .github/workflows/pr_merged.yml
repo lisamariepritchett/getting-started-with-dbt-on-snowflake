@@ -38,6 +38,12 @@ jobs:
       SNOWFLAKE_SCHEMA: PUBLIC
 
     steps:
+      - name: Enforce main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::This workflow must run on the main branch, not ${{ github.ref }}"
+          exit 1
+
       - name: Check out repository code
         uses: actions/checkout@v4
         with:
