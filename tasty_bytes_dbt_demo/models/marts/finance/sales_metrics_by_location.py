@@ -1,3 +1,5 @@
+# Snowpark model that aggregates sales metrics by location using truck and order data
+# Co-authored with CoCo
 from snowflake.snowpark.functions import col, lit, concat, count, sum as sum_, coalesce
 
 def model(dbt, session):
