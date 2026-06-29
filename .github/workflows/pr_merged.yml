@@ -76,7 +76,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD)
 
           # Categorize changes
-          MODEL_FILES=$(echo "$CHANGED_FILES" | grep '^tasty_bytes_dbt_demo/models/.*\.sql$' || true)
+          MODEL_FILES=$(echo "$CHANGED_FILES" | grep -E '^tasty_bytes_dbt_demo/models/.*\.(sql|py)$' || true)
           TEST_FILES=$(echo "$CHANGED_FILES" | grep '^tasty_bytes_dbt_demo/models/.*\.yml$' || true)
           MACRO_FILES=$(echo "$CHANGED_FILES" | grep '^tasty_bytes_dbt_demo/macros/' || true)
           CONFIG_FILES=$(echo "$CHANGED_FILES" | grep -E '^tasty_bytes_dbt_demo/(dbt_project\.yml|packages\.yml|profiles\.yml)$' || true)
@@ -84,7 +84,7 @@ jobs:
 
           if [ -n "$MODEL_FILES" ]; then
             # Extract model names and append + for downstream
-            MODELS=$(echo "$MODEL_FILES" | sed 's|.*/||;s|\.sql||' | sed 's/$/ /' | tr -d '\n' | sed 's/ /+ /g' | sed 's/+ $/+/')
+            MODELS=$(echo "$MODEL_FILES" | sed 's|.*/||;s|\.sql$||;s|\.py$||' | sed 's/$/ /' | tr -d '\n' | sed 's/ /+ /g' | sed 's/+ $/+/')
             echo "mode=build" >> $GITHUB_OUTPUT
             echo "models=$MODELS" >> $GITHUB_OUTPUT
           elif [ -n "$TEST_FILES" ] && [ -z "$MACRO_FILES" ] && [ -z "$CONFIG_FILES" ]; then
