@@ -1,5 +1,5 @@
 name: PR Accepted Deployment
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('Manual prod run by {0}: {1} --select {2}', github.actor, github.event.inputs.dbt_command, github.event.inputs.dbt_select) || format('PR from {0} accepted - triggered a {1}', github.actor, github.event_name) }}
+run-name: "${{ github.event_name == 'workflow_dispatch' && format('Manual prod run by {0}: {1} --select {2}', github.actor, github.event.inputs.dbt_command, github.event.inputs.dbt_select) || format('PR from {0} accepted', github.actor) }}"
 on:
   push:
     branches: [ main ]
