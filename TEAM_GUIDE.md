@@ -210,6 +210,105 @@ Model names are lowercase (matching the filename without `.sql`).
 
 The `--select` field is required to prevent accidental full rebuilds.
 
+## Scheduled Jobs (Prod)
+
+Prod schedules are Snowflake Tasks that call `EXECUTE DBT PROJECT` on the deployed
+project object. Task definitions live in the repo and are applied by CD on every merge,
+so schedule changes are code-reviewed like any other change.
+
+### Task definitions file
+
+Create `setup/scheduled_tasks.sql` with your task DDL:
+
+```sql
+-- Daily full build at 5 AM UTC
+CREATE OR ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.daily_prod_build
+  WAREHOUSE = XSMALL_WH
+  SCHEDULE = 'USING CRON 0 5 * * * UTC'
+AS
+  EXECUTE DBT PROJECT tasty_bytes_dbt_object_gh_action
+    ARGS = 'build --target prod --select path:models';
+
+-- Hourly refresh for time-sensitive models (top of every hour)
+CREATE OR ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.hourly_prod_refresh
+  WAREHOUSE = XSMALL_WH
+  SCHEDULE = 'USING CRON 0 * * * * UTC'
+AS
+  EXECUTE DBT PROJECT tasty_bytes_dbt_object_gh_action
+    ARGS = 'run --target prod --select tag:hourly';
+
+-- Resume tasks (idempotent — safe to re-run)
+ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.daily_prod_build RESUME;
+ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.hourly_prod_refresh RESUME;
+```
+
+### Tagging models for the hourly job
+
+Add `tags: ['hourly']` to models that need frequent refresh. In your model's config
+block or in `dbt_project.yml`:
+
+```yaml
+# dbt_project.yml (scoped to a folder)
+models:
+  tasty_bytes:
+    marts:
+      finance:
+        orders:
+          +tags: ['hourly']
+```
+
+Or per-model in the SQL file:
+```sql
+{{ config(tags=['hourly']) }}
+```
+
+### CD step to apply task definitions
+
+Add this step to `pr_merged.yml` after the deploy step:
+
+```yaml
+      - name: Apply scheduled task definitions
+        if: steps.changes.outputs.mode != 'skip' && steps.changes.outputs.mode != 'manual'
+        run: snow sql -f ./tasty_bytes_dbt_demo/setup/scheduled_tasks.sql -x
+```
+
+This runs the `CREATE OR ALTER TASK` statements using the CI service user's role
+(`DBT_CI`), which owns the tasks and has execute privileges on the project object.
+
+### Key points
+
+- **Tasks reference the project object** — no workspace needed in prod.
+- **`CREATE OR ALTER` is idempotent** — safe to run on every merge even if nothing changed.
+- **Role: `DBT_CI`** owns the tasks and executes them. Developers with only
+  `DBT_DEVELOPER` cannot modify or suspend prod tasks.
+- **MONITOR access** — grant `MONITOR` on the tasks to `DBT_DEVELOPER` so devs can
+  view run history in Snowsight (Transformations → dbt Projects) without being able
+  to alter the schedule.
+- **Serverless tasks won't work** — Snowflake requires a user-managed warehouse for
+  `EXECUTE DBT PROJECT`.
+- **To change a schedule or selector** — edit `setup/scheduled_tasks.sql`, open a PR,
+  merge. CD applies the new definition automatically.
+
+### Monitoring
+
+Enable observability on the schema where the project object lives:
+```sql
+ALTER SCHEMA TASTY_BYTES_STAGE_DB.PUBLIC SET LOG_LEVEL = 'INFO';
+ALTER SCHEMA TASTY_BYTES_STAGE_DB.PUBLIC SET TRACE_LEVEL = 'ALWAYS';
+ALTER SCHEMA TASTY_BYTES_STAGE_DB.PUBLIC SET METRIC_LEVEL = 'ALL';
+```
+
+Then view run history in Snowsight under **Transformations → dbt Projects**, or query:
+```sql
+SELECT *
+FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.DBT_PROJECT_EXECUTION_HISTORY(
+  DATABASE => 'TASTY_BYTES_STAGE_DB',
+  SCHEMA => 'PUBLIC',
+  OBJECT_NAME => 'TASTY_BYTES_DBT_OBJECT_GH_ACTION'
+))
+ORDER BY query_end_time DESC;
+```
+
 ## Do NOT
 
 - **Never** add a dbt workspace to the prod Snowflake account — all prod changes go through GitHub Actions.
@@ -238,7 +337,8 @@ tasty_bytes_dbt_demo/
 ├── setup/
 │   ├── tasty_bytes_setup.sql          # Original demo data setup
 │   ├── ci_cd_setup.sql               # OIDC + service user + network rules
-│   └── rbac_and_routing_setup.sql    # Roles + multi-db routing
+│   ├── rbac_and_routing_setup.sql    # Roles + multi-db routing
+│   └── scheduled_tasks.sql           # Prod task definitions (applied by CD)
 └── .github/workflows/
     ├── incoming_pr.yml      # CI workflow
     └── pr_merged.yml        # CD workflow

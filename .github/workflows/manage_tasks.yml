@@ -1,0 +1,51 @@
+name: Manage Prod Tasks
+run-name: "${{ github.actor }}: ${{ github.event.inputs.action }} ${{ github.event.inputs.task_name }}"
+on:
+  workflow_dispatch:
+    inputs:
+      task_name:
+        description: 'Task to manage'
+        required: true
+        type: choice
+        options:
+          - daily_prod_build
+          - hourly_prod_refresh
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - SUSPEND
+          - RESUME
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  manage-task:
+    name: "${{ github.event.inputs.action }} ${{ github.event.inputs.task_name }}"
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      SNOWFLAKE_CLI_FEATURES_ENABLE_DBT: true
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_DATABASE: TASTY_BYTES_STAGE_DB
+      SNOWFLAKE_SCHEMA: PUBLIC
+
+    steps:
+      - name: Install Snowflake CLI
+        uses: snowflakedb/snowflake-cli-action@v2.0
+        with:
+          use-oidc: true
+
+      - name: Test Snowflake connection
+        run: snow connection test -x
+
+      - name: ${{ github.event.inputs.action }} task
+        run: |
+          snow sql -q "ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.${{ github.event.inputs.task_name }} ${{ github.event.inputs.action }};" -x
+
+      - name: Confirm task state
+        run: |
+          snow sql -q "SHOW TASKS LIKE '${{ github.event.inputs.task_name }}' IN SCHEMA TASTY_BYTES_STAGE_DB.PUBLIC;" -x
