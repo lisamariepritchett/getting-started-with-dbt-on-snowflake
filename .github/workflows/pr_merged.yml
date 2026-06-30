@@ -102,6 +102,10 @@ jobs:
         if: steps.changes.outputs.mode != 'skip' && steps.changes.outputs.mode != 'manual'
         run: snow dbt deploy tasty_bytes_dbt_object_gh_action --source ./tasty_bytes_dbt_demo --default-target prod --dbt-version 1.10.15 --force -x --install-local-deps --external-access-integration dbt_ext_access
 
+      - name: Apply scheduled task definitions
+        if: steps.changes.outputs.mode != 'skip' && steps.changes.outputs.mode != 'manual'
+        run: snow sql -f ./tasty_bytes_dbt_demo/setup/scheduled_tasks.sql -x
+
       - name: Build changed models and downstream
         if: steps.changes.outputs.mode == 'build'
         run: snow dbt execute -x tasty_bytes_dbt_object_gh_action build --target prod --select ${{ steps.changes.outputs.models }}
