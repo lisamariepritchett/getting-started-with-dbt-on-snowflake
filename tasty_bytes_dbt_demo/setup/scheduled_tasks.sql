@@ -9,6 +9,10 @@
 USE ROLE DBT_CI;
 USE WAREHOUSE XSMALL_WH;
 
+-- Suspend tasks before altering (CREATE OR ALTER requires suspended state)
+ALTER TASK IF EXISTS TASTY_BYTES_STAGE_DB.PUBLIC.daily_prod_build SUSPEND;
+ALTER TASK IF EXISTS TASTY_BYTES_STAGE_DB.PUBLIC.hourly_prod_refresh SUSPEND;
+
 -- Daily full build at 5 AM UTC
 CREATE OR ALTER TASK TASTY_BYTES_STAGE_DB.PUBLIC.daily_prod_build
   WAREHOUSE = XSMALL_WH
